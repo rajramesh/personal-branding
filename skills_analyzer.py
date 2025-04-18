@@ -1,12 +1,16 @@
 import streamlit as st
 from openai import OpenAI
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set page config must be the first Streamlit command
 st.set_page_config(page_title="Personal Brand Discovery", layout="centered")
 
 # Initialize the OpenAI client with minimal configuration
-client = OpenAI()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Access control
 allowed_keys = ["peterrocks", "rajrocks", "teamaccess"]
