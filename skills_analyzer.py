@@ -22,7 +22,7 @@ if not api_key:
 client = OpenAI(api_key=api_key)
 
 # Access control
-allowed_keys = ["peterrocks", "rajrocks", "teamaccess"]
+allowed_keys = ["peterrocks", "rajrocks"]
 key = st.text_input("Enter access key:", type="password")
 
 # Only check the key if it's not empty
@@ -84,6 +84,8 @@ if key:
                     "2. Provide a paragraph explaining the reasoning behind the statement, connecting it to my strengths, values, and aspirations.\n"
                     "3. Write a 150-word engaging personal brand script that I can use to introduce myself to a potential employer or my manager—"
                     "something that feels confident, human, and makes me memorable.\n\n"
+                    "Do not add anything else after this to your answer.  Also address me with the name I gave you in response to the first question.\n"
+                    "If I did not give you a name, or gave something meaningless, use the name 'Shy Type'\n"
                     "Here are my answers to the personal branding questions:\n"
                 )
                 
