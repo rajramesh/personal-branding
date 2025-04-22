@@ -3,18 +3,18 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
-#api_key = st.secrets["api_key"]
+
+# Try loading from Streamlit secrets first
+if "OPENAI_API_KEY" in st.secrets:
+    api_key = st.secrets["OPENAI_API_KEY"]
+else:
+    load_dotenv()
+    api_key = os.getenv("OPENAI_API_KEY")
+
 
 # Set page config must be the first Streamlit command
 st.set_page_config(page_title="Personal Brand Discovery", layout="centered")
 
-# Load environment variables from .env file
-print("API key is: ", os.getenv("OPENAI_API_KEY"))
-load_dotenv()
-print("API key is: ", os.getenv("OPENAI_API_KEY"))
-
-# Initialize the OpenAI client with minimal configuration
-api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
     st.error("OPENAI_API_KEY not found in environment variables")
     st.stop()
