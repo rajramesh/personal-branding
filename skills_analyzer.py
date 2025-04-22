@@ -2,6 +2,13 @@ import streamlit as st
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+import io
+import base64
 
 
 # Try loading from Streamlit secrets first
@@ -59,8 +66,14 @@ if key:
             
             return questions
 
-        # Load questions
+        # Load prompt from file
+        def load_prompt(file_path="prompt.txt"):
+            with open(file_path, 'r') as file:
+                return file.read()
+
+        # Load questions and prompt
         questions = load_questions()
+        prompt_template = load_prompt()
 
         # Form to collect user responses
         with st.form("personal_brand_form"):
@@ -76,23 +89,10 @@ if key:
         if submitted:
             with st.spinner("Analyzing your responses..."):
                 # Build the prompt
-                prompt = (
-                    "I’ve answered a set of personal branding questions to reflect on my identity, strengths, values, "
-                    "passions, communication style, and the impact I want to create.\n\n"
-                    "Based on the responses below, do the following three things:\n\n"
-                    "1. Craft a concise one-line personal brand statement that captures the essence of who I am and what I uniquely offer.\n"
-                    "2. Provide a paragraph explaining the reasoning behind the statement, connecting it to my strengths, values, and aspirations.\n"
-                    "3. Write a 150-word engaging personal brand script that I can use to introduce myself to a potential employer or my manager—"
-                    "something that feels confident, human, and makes me memorable.\n\n"
-                    "Do not add anything else after this to your answer.  Also address me with the name I gave you in response to the first question.\n"
-                    "If I did not give you a name, or gave something meaningless, use the name 'Shy Type'\n"
-                    "Here are my answers to the personal branding questions:\n"
-                )
+                prompt = prompt_template + "\n\n"
                 
                 for i, ((question, _), response) in enumerate(zip(questions, responses), 1):
                     prompt += f"{i}. {question}\n{response}\n\n"
-
-#                prompt += "Provide your analysis in a friendly, clear, and insightful tone."
 
                 try:
                     response = client.responses.create(
@@ -104,6 +104,78 @@ if key:
                     result = response.output_text
                     st.success("Here is your personal brand insight:")
                     st.write(result)
+
+                    # PDF Download functionality
+                    st.markdown("---")
+                    st.subheader("Download Your Results")
+                    
+                    def create_pdf(result, responses, questions):
+                        buffer = io.BytesIO()
+                        doc = SimpleDocTemplate(buffer, pagesize=letter)
+                        styles = getSampleStyleSheet()
+                        
+                        # Custom styles
+                        title_style = ParagraphStyle(
+                            'CustomTitle',
+                            parent=styles['Heading1'],
+                            fontSize=16,
+                            spaceAfter=30
+                        )
+                        
+                        body_style = ParagraphStyle(
+                            'CustomBody',
+                            parent=styles['Normal'],
+                            fontSize=12,
+                            spaceAfter=12
+                        )
+                        
+                        bold_style = ParagraphStyle(
+                            'BoldStyle',
+                            parent=styles['Normal'],
+                            fontSize=12,
+                            spaceAfter=12,
+                            fontName='Helvetica-Bold'
+                        )
+                        
+                        # Build PDF content
+                        content = []
+                        
+                        # Add title
+                        content.append(Paragraph("Your Personal Brand Analysis", title_style))
+                        content.append(Spacer(1, 20))
+                        
+                        # Process the result to handle any line starting with **
+                        lines = result.split('\n')
+                        for line in lines:
+                            if line.strip().startswith('**'):
+                                # Remove the ** and make it bold
+                                clean_line = line.strip().replace('**', '')
+                                content.append(Paragraph(f"<b>{clean_line}</b>", bold_style))
+                            else:
+                                content.append(Paragraph(line, body_style))
+                        
+                        # Add page break before responses
+                        content.append(PageBreak())
+                        content.append(Spacer(1, 20))
+                        
+                        # Add questions and responses
+                        content.append(Paragraph("<b>Your Responses</b>", bold_style))
+                        for i, ((question, _), response) in enumerate(zip(questions, responses), 1):
+                            content.append(Paragraph(f"<b>Question {i}: {question}</b>", bold_style))
+                            content.append(Paragraph(response, body_style))
+                            content.append(Spacer(1, 20))
+                        
+                        # Build PDF
+                        doc.build(content)
+                        return buffer.getvalue()
+
+                    # Create PDF
+                    pdf_data = create_pdf(result, responses, questions)
+                    
+                    # Create download button
+                    b64 = base64.b64encode(pdf_data).decode()
+                    href = f'<a href="data:application/pdf;base64,{b64}" download="personal-brand-analysis.pdf">📥 Download PDF Report</a>'
+                    st.markdown(href, unsafe_allow_html=True)
 
                 except Exception as e:
                     st.error("An error occurred while trying to generate insights. Please check your API key and try again.")
