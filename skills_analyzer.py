@@ -1,15 +1,17 @@
 import streamlit as st
 from openai import OpenAI
 import os
-#from dotenv import load_dotenv
+from dotenv import load_dotenv
 
-api_key = st.secrets["api_key"]
-
-# Load environment variables from .env file
-#load_dotenv()
+#api_key = st.secrets["api_key"]
 
 # Set page config must be the first Streamlit command
 st.set_page_config(page_title="Personal Brand Discovery", layout="centered")
+
+# Load environment variables from .env file
+print("API key is: ", os.getenv("OPENAI_API_KEY"))
+load_dotenv()
+print("API key is: ", os.getenv("OPENAI_API_KEY"))
 
 # Initialize the OpenAI client with minimal configuration
 api_key = os.getenv("OPENAI_API_KEY")
@@ -80,7 +82,7 @@ if key:
                     "Based on the responses below, do the following three things:\n\n"
                     "1. Craft a concise one-line personal brand statement that captures the essence of who I am and what I uniquely offer.\n"
                     "2. Provide a paragraph explaining the reasoning behind the statement, connecting it to my strengths, values, and aspirations.\n"
-                    "3. Write a 200-word engaging personal brand script that I can use to introduce myself to a potential employer or my manager—"
+                    "3. Write a 150-word engaging personal brand script that I can use to introduce myself to a potential employer or my manager—"
                     "something that feels confident, human, and makes me memorable.\n\n"
                     "Here are my answers to the personal branding questions:\n"
                 )
