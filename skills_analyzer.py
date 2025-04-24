@@ -40,31 +40,50 @@ if key:
     else:
         # Main app content
         st.title("🔍 Discover Your Personal Brand")
-        st.write("Answer the following questions to help identify your core competencies and shape your personal brand.")
-
+        
+        # User type selection
+        user_type = st.radio(
+            "Select who you are:",
+            ["Knowledge Worker Seeking Career Growth or Organizational Shift - Internally or Switch Companies","Career Changer Moving into Enterprise/Business Architecture or AI as a Business-Technology Connector, Pivoting into more Strategic Role.","Neither: Creator, Student, Solopreneur, or Anyone Seeking more Clarity on Your Professional Identity."],
+            horizontal=True
+        )
+        
+        # Map user type to question file
+        question_files = {
+            "Knowledge Worker Seeking Career Growth or Organizational Shift - Internally or Switch Companies": "questions1.txt",
+            "Career Changer Moving into Enterprise/Business Architecture or AI as a Business-Technology Connector, Pivoting into more Strategic Role.": "questions2.txt",
+            "Neither: Creator, Student, Solopreneur, or Anyone Seeking more Clarity on Your Professional Identity.": "questions3.txt"
+        }
+        
+        selected_file = question_files[user_type]
+        
         # Read questions from file
-        def load_questions(file_path="questions.txt"):
-            questions = []
-            current_question = None
-            current_description = []
-            
-            with open(file_path, 'r') as file:
-                for line in file:
-                    line = line.strip()
-                    if line.startswith('Q:'):
-                        if current_question is not None:
-                            questions.append((current_question, '\n'.join(current_description)))
-                        current_question = line[2:].strip()
-                        current_description = []
-                    elif line.startswith('D:'):
-                        current_description.append(line[2:].strip())
-                    elif line and current_description:  # If it's a continuation of the description
-                        current_description.append(line)
-            
-            if current_question is not None:
-                questions.append((current_question, '\n'.join(current_description)))
-            
-            return questions
+        def load_questions(file_path):
+            try:
+                questions = []
+                current_question = None
+                current_description = []
+                
+                with open(file_path, 'r') as file:
+                    for line in file:
+                        line = line.strip()
+                        if line.startswith('Q:'):
+                            if current_question is not None:
+                                questions.append((current_question, '\n'.join(current_description)))
+                            current_question = line[2:].strip()
+                            current_description = []
+                        elif line.startswith('D:'):
+                            current_description.append(line[2:].strip())
+                        elif line and current_description:  # If it's a continuation of the description
+                            current_description.append(line)
+                
+                if current_question is not None:
+                    questions.append((current_question, '\n'.join(current_description)))
+                
+                return questions
+            except FileNotFoundError:
+                st.error(f"Question file {file_path} not found. Please contact support.")
+                st.stop()
 
         # Load prompt from file
         def load_prompt(file_path="prompt.txt"):
@@ -72,8 +91,10 @@ if key:
                 return file.read()
 
         # Load questions and prompt
-        questions = load_questions()
+        questions = load_questions(selected_file)
         prompt_template = load_prompt()
+
+        st.write("Answer the following questions to help identify your core competencies and shape your personal brand.")
 
         # Form to collect user responses
         with st.form("personal_brand_form"):
