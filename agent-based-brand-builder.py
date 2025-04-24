@@ -10,6 +10,9 @@ from reportlab.lib.units import inch
 import io
 import base64
 import json
+import docx
+import PyPDF2
+import tempfile
 
 # Initialize session state variables
 if 'initial_context' not in st.session_state:
@@ -22,6 +25,57 @@ if 'responses' not in st.session_state:
     st.session_state.responses = []
 if 'analysis_result' not in st.session_state:
     st.session_state.analysis_result = None
+if 'user_name' not in st.session_state:
+    st.session_state.user_name = ""
+
+def extract_text_from_pdf(file_path):
+    """Extract text from a PDF file."""
+    pdf_reader = PyPDF2.PdfReader(file_path)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text() + "\n"
+    return text
+
+def extract_text_from_docx(file_path):
+    """Extract text from a DOCX file."""
+    doc = docx.Document(file_path)
+    text = ""
+    for paragraph in doc.paragraphs:
+        text += paragraph.text + "\n"
+    return text
+
+def extract_text_from_txt(file):
+    """Extract text from a TXT file."""
+    return file.getvalue().decode('utf-8')
+
+def process_uploaded_files(files):
+    """Process all uploaded files and extract their content."""
+    extracted_texts = []
+    for file in files:
+        # Create a temporary file to handle the uploaded file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            tmp_file.write(file.getvalue())
+            tmp_file_path = tmp_file.name
+
+        try:
+            if file.type == "application/pdf":
+                text = extract_text_from_pdf(tmp_file_path)
+            elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                text = extract_text_from_docx(tmp_file_path)
+            elif file.type == "text/plain":
+                text = extract_text_from_txt(file)
+            else:
+                text = f"Unsupported file type: {file.type}"
+            
+            extracted_texts.append({
+                "filename": file.name,
+                "content": text
+            })
+        finally:
+            # Clean up the temporary file
+            os.unlink(tmp_file_path)
+    
+    return extracted_texts
 
 # Try loading from Streamlit secrets first
 if "OPENAI_API_KEY" in st.secrets:
@@ -64,6 +118,13 @@ if key:
         st.write(context_instructions)
         
         with st.form("initial_context_form"):
+            # Add name field
+            user_name = st.text_input(
+                "What's your name?",
+                value=st.session_state.user_name,
+                placeholder="Enter your name"
+            )
+            
             initial_context = st.text_area(
                 "Share your information here:",
                 height=500,
@@ -82,27 +143,35 @@ if key:
             initial_submitted = st.form_submit_button("Submit Initial Information")
         
         if initial_submitted:
+            if not user_name:
+                st.error("Please provide your name.")
+                st.stop()
             if not initial_context:
                 st.error("Please provide some information about yourself and your goals.")
                 st.stop()
             
-            # Store the initial context and uploaded files in session state
+            # Store the initial context, name, and uploaded files in session state
+            st.session_state.user_name = user_name
             st.session_state.initial_context = initial_context
             st.session_state.uploaded_files = uploaded_files
             
             with st.spinner("Analyzing your context to determine relevant questions..."):
                 try:
-                    # Prepare the context with uploaded files information if available
-                    full_context = initial_context
+                    # Process uploaded files and extract their content
                     if uploaded_files:
-                        full_context += "\n\nAdditional documents have been uploaded for context:"
-                        for i, file in enumerate(uploaded_files, 1):
-                            full_context += f"\n- Document {i}: {file.name}"
+                        extracted_docs = process_uploaded_files(uploaded_files)
+                        # Add document content to the context
+                        full_context = initial_context + "\n\nAdditional information from uploaded documents:\n"
+                        for doc in extracted_docs:
+                            full_context += f"\nContent from {doc['filename']}:\n{doc['content']}\n"
+                    else:
+                        full_context = initial_context
                     
                     # Generate questions based on context
-                    system_prompt = """You are a personal brand development expert. Based on the user's context, generate a set of relevant questions that will help them develop their personal brand. 
+                    system_prompt = """You are a personal brand development expert. Based on the user's context and any uploaded documents, generate a set of relevant questions that will help them develop their personal brand. 
                     The questions should be specific to their situation and goals. Format the response as a JSON array of objects, where each object has 'question' and 'description' fields.
-                    The questions should be thought-provoking and help uncover their unique value proposition, strengths, and professional identity."""
+                    The questions should be thought-provoking and help uncover their unique value proposition, strengths, and professional identity.
+                    DO NOT ask questions about information that is already provided in the uploaded documents."""
                     
                     chat_response = client.chat.completions.create(
                         model="gpt-4",
@@ -159,6 +228,7 @@ if key:
 
                         # Format the analysis prompt
                         analysis_prompt = analysis_prompt_template.format(
+                            user_name=st.session_state.user_name,
                             initial_context=st.session_state.initial_context,
                             responses=responses_section
                         )
@@ -190,14 +260,24 @@ if key:
                                 'CustomTitle',
                                 parent=styles['Heading1'],
                                 fontSize=16,
-                                spaceAfter=30
+                                spaceAfter=30,
+                                textColor=colors.HexColor('#2E4053')
+                            )
+                            
+                            section_title_style = ParagraphStyle(
+                                'SectionTitle',
+                                parent=styles['Heading2'],
+                                fontSize=14,
+                                spaceAfter=15,
+                                textColor=colors.HexColor('#2E4053')
                             )
                             
                             body_style = ParagraphStyle(
                                 'CustomBody',
                                 parent=styles['Normal'],
                                 fontSize=12,
-                                spaceAfter=12
+                                spaceAfter=12,
+                                leading=14
                             )
                             
                             bold_style = ParagraphStyle(
@@ -205,31 +285,55 @@ if key:
                                 parent=styles['Normal'],
                                 fontSize=12,
                                 spaceAfter=12,
-                                fontName='Helvetica-Bold'
+                                fontName='Helvetica-Bold',
+                                textColor=colors.HexColor('#2E4053')
                             )
                             
                             # Build PDF content
                             content = []
                             
                             # Add title
-                            content.append(Paragraph("Your Personal Brand Analysis", title_style))
+                            content.append(Paragraph("Personal Brand Analysis", title_style))
                             content.append(Spacer(1, 20))
                             
-                            # Add initial context
-                            content.append(Paragraph("<b>Initial Context</b>", bold_style))
+                            # Add initial context section
+                            content.append(Paragraph("Initial Context", section_title_style))
                             content.append(Paragraph(st.session_state.initial_context, body_style))
                             content.append(Spacer(1, 20))
                             
-                            # Add analysis
-                            content.append(Paragraph("<b>Analysis</b>", bold_style))
-                            content.append(Paragraph(result, body_style))
+                            # Add analysis section
+                            content.append(Paragraph("Analysis", section_title_style))
+                            
+                            # Split the result into sections based on numbered points
+                            sections = result.split('\n\n')
+                            for section in sections:
+                                if section.strip():
+                                    # Check if it's a numbered section
+                                    if section.strip()[0].isdigit():
+                                        # Extract the section title and content
+                                        parts = section.split('.', 1)
+                                        if len(parts) > 1:
+                                            section_title = parts[0].strip() + '.'
+                                            section_content = parts[1].strip()
+                                            content.append(Paragraph(section_title, bold_style))
+                                            content.append(Paragraph(section_content, body_style))
+                                        else:
+                                            content.append(Paragraph(section, body_style))
+                                    else:
+                                        content.append(Paragraph(section, body_style))
+                                    content.append(Spacer(1, 12))
+                            
                             content.append(PageBreak())
                             
-                            # Add questions and responses
-                            content.append(Paragraph("<b>Your Responses</b>", bold_style))
+                            # Add questions and responses section
+                            content.append(Paragraph("Your Responses", section_title_style))
+                            content.append(Spacer(1, 15))
+                            
                             for i, (q, r) in enumerate(zip(questions_data, responses), 1):
                                 if r.strip():  # Only include answered questions
-                                    content.append(Paragraph(f"<b>Question {i}: {q['question']}</b>", bold_style))
+                                    content.append(Paragraph(f"Question {i}: {q['question']}", bold_style))
+                                    if q.get('description'):
+                                        content.append(Paragraph(q['description'], body_style))
                                     content.append(Paragraph(r, body_style))
                                     content.append(Spacer(1, 20))
                             
@@ -240,9 +344,9 @@ if key:
                         # Create PDF
                         pdf_data = create_pdf(st.session_state.analysis_result, st.session_state.responses, st.session_state.questions_data)
                         
-                        # Create download button
+                        # Create download button with personalized filename
                         b64 = base64.b64encode(pdf_data).decode()
-                        href = f'<a href="data:application/pdf;base64,{b64}" download="personal-brand-analysis.pdf">📥 Download PDF Report</a>'
+                        href = f'<a href="data:application/pdf;base64,{b64}" download="{st.session_state.user_name}-personal-brand-analysis.pdf">📥 Download PDF Report</a>'
                         st.markdown(href, unsafe_allow_html=True)
 
                     except Exception as e:
