@@ -84,6 +84,14 @@ else:
     load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
 
+# Load allowed keys from environment
+if "ALLOWED_KEYS" in st.secrets:
+    allowed_keys = st.secrets["ALLOWED_KEYS"].split(",")
+else:
+    load_dotenv()
+    allowed_keys_str = os.getenv("ALLOWED_KEYS", "")
+    allowed_keys = [key.strip() for key in allowed_keys_str.split(",") if key.strip()]
+
 # Set page config must be the first Streamlit command
 st.set_page_config(page_title="Personal Brand Discovery", layout="centered")
 
@@ -91,10 +99,13 @@ if not api_key:
     st.error("OPENAI_API_KEY not found in environment variables")
     st.stop()
 
+if not allowed_keys:
+    st.error("ALLOWED_KEYS not found in environment variables")
+    st.stop()
+
 client = OpenAI(api_key=api_key)
 
 # Access control
-allowed_keys = ["peterrocks", "rajrocks"]
 key = st.text_input("Enter access key:", type="password")
 
 # Only check the key if it's not empty
@@ -315,7 +326,9 @@ if key:
                                         if len(parts) > 1:
                                             section_title = parts[0].strip() + '.'
                                             section_content = parts[1].strip()
+                                            # First line: section number and title
                                             content.append(Paragraph(section_title, bold_style))
+                                            # Second line: content
                                             content.append(Paragraph(section_content, body_style))
                                         else:
                                             content.append(Paragraph(section, body_style))
