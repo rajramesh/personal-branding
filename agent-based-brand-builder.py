@@ -115,7 +115,6 @@ if key:
         st.stop()
     else:
         # Main app content
-        st.title("🔍 Discover Your Personal Brand")
         
         # Load initial context gathering instructions
         try:
@@ -126,7 +125,7 @@ if key:
             st.stop()
         
         # Initial context gathering
-        st.write(context_instructions)
+        st.markdown(context_instructions)
         
         with st.form("initial_context_form"):
             # Add name field
