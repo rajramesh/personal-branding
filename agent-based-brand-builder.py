@@ -27,6 +27,10 @@ if 'analysis_result' not in st.session_state:
     st.session_state.analysis_result = None
 if 'user_name' not in st.session_state:
     st.session_state.user_name = ""
+if 'current_question' not in st.session_state:
+    st.session_state.current_question = 0
+if 'max_question_viewed' not in st.session_state:
+    st.session_state.max_question_viewed = 0
 
 def extract_text_from_pdf(file_path):
     """Extract text from a PDF file."""
@@ -202,22 +206,60 @@ if key:
         
         # Show questions form if we have questions data
         if st.session_state.questions_data:
-            st.write("Based on what you have shared, here are the questions we'll explore:")
+            total_questions = len(st.session_state.questions_data)
+            unanswered_questions = sum(1 for r in st.session_state.responses if not r.strip())
             
+            # Add CSS to hide the submit button
+            st.markdown("""
+                <style>
+                .stHidden {
+                    display: none;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            
+            # Update max question viewed
+            st.session_state.max_question_viewed = max(st.session_state.max_question_viewed, st.session_state.current_question)
+            
+            # Display progress
+            st.progress((total_questions - unanswered_questions) / total_questions)
+            st.write(f"Questions remaining: {unanswered_questions} out of {total_questions}")
+            
+            # Navigation buttons
+            col1, col2 = st.columns(2)
+            
+            # Only show navigation buttons if they are applicable
+            if st.session_state.current_question > 0:
+                with col1:
+                    if st.button("Previous Question"):
+                        st.session_state.current_question -= 1
+            
+            if st.session_state.current_question < total_questions - 1:
+                with col2:
+                    if st.button("Next Question"):
+                        st.session_state.current_question += 1
+            
+            # Display current question
             with st.form("personal_brand_form"):
-                for i, q in enumerate(st.session_state.questions_data, 1):
-                    st.subheader(f"{i}. {q['question']}")
-                    if q.get('description'):
-                        st.markdown(q['description'])
-                    response = st.text_area(
-                        "Your response (optional):", 
-                        height=100, 
-                        key=f"response_{i}",
-                        value=st.session_state.responses[i-1] if i-1 < len(st.session_state.responses) else ""
-                    )
-                    st.session_state.responses[i-1] = response
+                q = st.session_state.questions_data[st.session_state.current_question]
+                st.subheader(f"Question {st.session_state.current_question + 1} of {total_questions}")
+                st.subheader(q['question'])
+                if q.get('description'):
+                    st.markdown(q['description'])
+                response = st.text_area(
+                    "Your response:",
+                    height=100,
+                    key=f"response_{st.session_state.current_question}",
+                    value=st.session_state.responses[st.session_state.current_question]
+                )
+                st.session_state.responses[st.session_state.current_question] = response
                 
-                submitted = st.form_submit_button("Generate Personal Brand Analysis")
+                # Always show a submit button, but change the label based on position
+                if st.session_state.current_question == total_questions - 1:
+                    submitted = st.form_submit_button("Submit Your Responses")
+                else:
+                    st.write("*Please use the 'Next Question' button above to continue*")
+                    submitted = st.form_submit_button("Submit for Analysis Now (Not Preferred)")
 
             if submitted:
                 with st.spinner("Analyzing your responses..."):
@@ -256,11 +298,42 @@ if key:
                         st.success("Here is your personal brand insight:")
                         st.write(st.session_state.analysis_result)
 
+                        # Find similar personal brands
+                        st.markdown("---")
+                        st.subheader("Notable People with Similar Personal Brands")
+                        
+                        with st.spinner("Finding notable people with similar personal brands..."):
+                            # First, get a concise summary of the personal brand
+                            brand_summary_response = client.chat.completions.create(
+                                model="gpt-4",
+                                messages=[
+                                    {"role": "system", "content": "Extract the key characteristics and essence of this person's personal brand in a concise way that can be used for searching similar notable figures. Focus on their unique qualities, values, and impact."},
+                                    {"role": "user", "content": st.session_state.analysis_result}
+                                ],
+                                temperature=0.7
+                            )
+                            
+                            brand_summary = brand_summary_response.choices[0].message.content
+                            
+                            # Search for similar notable figures
+                            search_query = f"notable successful famous people who exemplify {brand_summary}"
+                            search_results = client.chat.completions.create(
+                                model="gpt-4",
+                                messages=[
+                                    {"role": "system", "content": "You are tasked with identifying 3 notable and positively regarded historical or contemporary figures who share similar personal brand characteristics. Focus on positive role models and avoid controversial or infamous figures. For each person, provide their name and a brief explanation of how their personal brand aligns with the given characteristics."},
+                                    {"role": "user", "content": f"Find 3 notable figures who share these brand characteristics: {brand_summary}"}
+                                ],
+                                temperature=0.7
+                            )
+                            
+                            similar_figures = search_results.choices[0].message.content
+                            st.write(similar_figures)
+
                         # PDF Download functionality
                         st.markdown("---")
                         st.subheader("Download Your Results")
                         
-                        def create_pdf(result, responses, questions_data):
+                        def create_pdf(result, responses, questions_data, similar_figures):
                             buffer = io.BytesIO()
                             doc = SimpleDocTemplate(buffer, pagesize=letter)
                             styles = getSampleStyleSheet()
@@ -335,6 +408,11 @@ if key:
                                         content.append(Paragraph(section, body_style))
                                     content.append(Spacer(1, 12))
                             
+                            # Add similar personal brands section
+                            content.append(Paragraph("Notable People with Similar Personal Brands", section_title_style))
+                            content.append(Paragraph(similar_figures, body_style))
+                            content.append(Spacer(1, 20))
+                            
                             content.append(PageBreak())
                             
                             # Add questions and responses section
@@ -354,7 +432,7 @@ if key:
                             return buffer.getvalue()
 
                         # Create PDF
-                        pdf_data = create_pdf(st.session_state.analysis_result, st.session_state.responses, st.session_state.questions_data)
+                        pdf_data = create_pdf(st.session_state.analysis_result, st.session_state.responses, st.session_state.questions_data, similar_figures)
                         
                         # Create download button with personalized filename
                         b64 = base64.b64encode(pdf_data).decode()
